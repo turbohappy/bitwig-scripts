@@ -5,6 +5,7 @@ import java.util.function.Supplier;
 
 import com.bitwig.extension.api.Color;
 import com.bitwig.extension.api.util.midi.ShortMidiMessage;
+import com.bitwig.extension.callback.DoubleValueChangedCallback;
 import com.bitwig.extension.callback.ShortMidiMessageReceivedCallback;
 import com.bitwig.extension.controller.ControllerExtension;
 import com.bitwig.extension.controller.api.Action;
@@ -33,6 +34,7 @@ import com.bitwig.extension.controller.api.Parameter;
 import com.bitwig.extension.controller.api.PinnableCursorDevice;
 import com.bitwig.extension.controller.api.PlayingNote;
 import com.bitwig.extension.controller.api.RelativeHardwareKnob;
+import com.bitwig.extension.controller.api.RemoteControl;
 import com.bitwig.extension.controller.api.Scene;
 import com.bitwig.extension.controller.api.SceneBank;
 import com.bitwig.extension.controller.api.Transport;
@@ -140,16 +142,18 @@ public class PresonusAtom extends ControllerExtension {
 			scene.exists().markInterested();
 		}
 
-//		mCursorDevice = mCursorTrack.createCursorDevice("ATOM", "Atom", 0, CursorDeviceFollowMode.FIRST_INSTRUMENT);
-//		mCursorDevice = mCursorTrack.createCursorDevice();
 		mCursorDevice = mCursorTrack.createCursorDevice("SELECTED", "AtomSelected", 0,
 				CursorDeviceFollowMode.FOLLOW_SELECTION);
 
 		mRemoteControls = mCursorDevice.createCursorRemoteControlsPage(4);
-		mRemoteControls.setHardwareLayout(HardwareControlType.ENCODER, 4);
+		mRemoteControls.setHardwareLayout(HardwareControlType.KNOB, 4);
 		for (int i = 0; i < 4; ++i) {
-			mRemoteControls.getParameter(i).markInterested();
-			mRemoteControls.getParameter(i).setIndication(true);
+			RemoteControl currentControl = mRemoteControls.getParameter(i);
+			currentControl.markInterested();
+			currentControl.setIndication(true);
+			currentControl.value().addValueObserver((DoubleValueChangedCallback) newValue -> {
+				currentControl.inc(0);
+			});
 		}
 
 		mTransport = host.createTransport();
@@ -196,7 +200,7 @@ public class PresonusAtom extends ControllerExtension {
 		// Turn on Native Mode
 		mMidiOut.sendMidi(0x8f, 0, 127);
 
-		host.showPopupNotification("ATOM Custom Initialized");
+		host.showPopupNotification("ATOM Extended Initialized");
 	}
 
 	@Override
@@ -209,7 +213,7 @@ public class PresonusAtom extends ControllerExtension {
 		// Turn off Native Mode
 		mMidiOut.sendMidi(0x8f, 0, 0);
 
-		getHost().showPopupNotification("ATOM Custom Exited");
+		getHost().showPopupNotification("ATOM Extended Exited");
 	}
 
 	/** Called when we receive short MIDI message on port 0. */
@@ -391,10 +395,6 @@ public class PresonusAtom extends ControllerExtension {
 		mBaseLayer.bindToggle(mBankButton, () -> {
 			boolean val = !xyz[0];
 			xyz[0] = val;
-			for (int i = 0; i < 4; ++i) {
-				mRemoteControls.getParameter(i).setIndication(val);
-			}
-
 		}, () -> xyz[0]);
 
 		mBaseLayer.bindToggle(mUpButton, () -> {
@@ -815,7 +815,11 @@ public class PresonusAtom extends ControllerExtension {
 
 		final RelativeHardwareKnob encoder = mHardwareSurface.createRelativeHardwareKnob("encoder" + (index + 1));
 		encoder.setLabel(String.valueOf(index + 1));
-		encoder.setAdjustValueMatcher(mMidiIn.createRelativeSignedBitCCValueMatcher(0, CC_ENCODER_1 + index, 50));
+		encoder.setAdjustValueMatcher(mMidiIn.createRelativeSignedBitCCValueMatcher(0, CC_ENCODER_1 + index, 40));
+
+//		final AbsoluteHardwareKnob encoder = mHardwareSurface.createAbsoluteHardwareKnob("encoder" + (index + 1));
+//		encoder.setLabel(String.valueOf(index + 1));
+//		encoder.setAdjustValueMatcher(mMidiIn.createAbsoluteCCValueMatcher(0, CC_ENCODER_1 + index));
 
 		mEncoders[index] = encoder;
 	}
@@ -917,6 +921,7 @@ public class PresonusAtom extends ControllerExtension {
 	private MultiStateHardwareLight[] mPadLights = new MultiStateHardwareLight[16];
 
 	private RelativeHardwareKnob[] mEncoders = new RelativeHardwareKnob[4];
+//	private AbsoluteHardwareKnob[] mEncoders = new AbsoluteHardwareKnob[4];
 
 	private final Layers mLayers = new Layers(this) {
 		@Override
