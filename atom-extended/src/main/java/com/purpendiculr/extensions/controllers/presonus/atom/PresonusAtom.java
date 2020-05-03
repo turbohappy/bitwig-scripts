@@ -1,11 +1,12 @@
 package com.purpendiculr.extensions.controllers.presonus.atom;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import com.bitwig.extension.api.Color;
 import com.bitwig.extension.api.util.midi.ShortMidiMessage;
-import com.bitwig.extension.callback.DoubleValueChangedCallback;
 import com.bitwig.extension.callback.ShortMidiMessageReceivedCallback;
 import com.bitwig.extension.controller.ControllerExtension;
 import com.bitwig.extension.controller.api.Action;
@@ -19,6 +20,7 @@ import com.bitwig.extension.controller.api.CursorRemoteControlsPage;
 import com.bitwig.extension.controller.api.CursorTrack;
 import com.bitwig.extension.controller.api.DrumPad;
 import com.bitwig.extension.controller.api.DrumPadBank;
+import com.bitwig.extension.controller.api.HardwareActionBindable;
 import com.bitwig.extension.controller.api.HardwareButton;
 import com.bitwig.extension.controller.api.HardwareControlType;
 import com.bitwig.extension.controller.api.HardwareLightVisualState;
@@ -151,9 +153,11 @@ public class PresonusAtom extends ControllerExtension {
 			RemoteControl currentControl = mRemoteControls.getParameter(i);
 			currentControl.markInterested();
 			currentControl.setIndication(true);
-			currentControl.value().addValueObserver((DoubleValueChangedCallback) newValue -> {
-				currentControl.inc(0);
-			});
+			// TODO: controller visualizations don't come up. this forces it but too many
+			// side effects
+//			currentControl.value().addValueObserver((DoubleValueChangedCallback) newValue -> {
+//				currentControl.inc(0);
+//			});
 		}
 
 		mTransport = host.createTransport();
@@ -193,7 +197,8 @@ public class PresonusAtom extends ControllerExtension {
 		mDrumPadBank.exists().markInterested();
 		mCursorTrack.color().markInterested();
 
-		createHardwareSurface();
+		hardware = new Hardware(host);
+		hardware.createHardwareSurface();
 
 		initLayers();
 
@@ -205,7 +210,7 @@ public class PresonusAtom extends ControllerExtension {
 
 	@Override
 	public void flush() {
-		mHardwareSurface.updateHardware();
+		hardware.flush();
 	}
 
 	@Override
@@ -221,143 +226,24 @@ public class PresonusAtom extends ControllerExtension {
 		// getHost().println(msg.toString());
 	}
 
-	private void createHardwareSurface() {
-		final ControllerHost host = getHost();
-		final HardwareSurface surface = host.createHardwareSurface();
-		mHardwareSurface = surface;
-
-		surface.setPhysicalSize(202, 195);
-
-		mShiftButton = createToggleButton("shift", CC_SHIFT, ORANGE);
-		mShiftButton.setLabel("Shift");
-
-		// NAV section
-		mUpButton = createToggleButton("up", CC_UP, ORANGE);
-		mUpButton.setLabel("Up");
-		mDownButton = createToggleButton("down", CC_DOWN, ORANGE);
-		mDownButton.setLabel("Down");
-		mLeftButton = createToggleButton("left", CC_LEFT, ORANGE);
-		mLeftButton.setLabel("Left");
-		mRightButton = createToggleButton("right", CC_RIGHT, ORANGE);
-		mRightButton.setLabel("Right");
-		mSelectButton = createRGBButton("select", CC_SELECT);
-		mSelectButton.setLabel("Select");
-		mZoomButton = createToggleButton("zoom", CC_ZOOM, ORANGE);
-		mZoomButton.setLabel("Zoom");
-
-		// TRANS section
-		mClickCountInButton = createToggleButton("click_count_in", CC_CLICK_COUNT_IN, ORANGE);
-		mClickCountInButton.setLabel("Click\nCount in");
-		mRecordSaveButton = createToggleButton("record_save", CC_RECORD_SAVE, RED);
-		mRecordSaveButton.setLabel("Record\nSave");
-		mPlayLoopButton = createToggleButton("play_loop", CC_PLAY_LOOP_TOGGLE, GREEN);
-		mPlayLoopButton.setLabel("Play\nLoop");
-		mStopUndoButton = createToggleButton("stop_undo", CC_STOP_UNDO, BLUE);
-		mStopUndoButton.setLabel("Stop\nUndo");
-
-		// SONG section
-		mSetupButton = createToggleButton("setup", CC_SETUP, ORANGE);
-		mSetupButton.setLabel("Setup");
-		mSetLoopButton = createToggleButton("set_loop", CC_SET_LOOP, ORANGE);
-		mSetLoopButton.setLabel("Set Loop");
-
-		// EVENT section
-		mEditorButton = createToggleButton("editor", CC_EDITOR, ORANGE);
-		mEditorButton.setLabel("Editor");
-		mNudgeQuantizeButton = createToggleButton("nudge_quantize", CC_NUDGE_QUANTIZE, ORANGE);
-		mNudgeQuantizeButton.setLabel("Nudge\nQuantize");
-
-		// INST section
-		mShowHideButton = createToggleButton("show_hide", CC_SHOW_HIDE, ORANGE);
-		mShowHideButton.setLabel("Show/\nHide");
-		mPresetPadSelectButton = createToggleButton("preset_pad_select", CC_PRESET_PAD_SELECT, WHITE);
-		mPresetPadSelectButton.setLabel("Preset +-\nFocus");
-		mBankButton = createToggleButton("bank", CC_BANK_TRANSPOSE, RED);
-		mBankButton.setLabel("Bank");
-
-		// MODE section
-		mFullLevelButton = createToggleButton("full_level", CC_FULL_LEVEL, RED);
-		mFullLevelButton.setLabel("Full Level");
-		mNoteRepeatButton = createToggleButton("note_repeat", CC_NOTE_REPEAT, RED);
-		mNoteRepeatButton.setLabel("Note\nRepeat");
-
-		// Pads
-
-		for (int i = 0; i < 16; i++) {
-			final DrumPad drumPad = mDrumPadBank.getItemAt(i);
-			drumPad.exists().markInterested();
-			drumPad.color().markInterested();
-
-			createPadButton(i);
-		}
-
-		for (int i = 0; i < 4; i++) {
-			createEncoder(i);
-		}
-
-		initHardwareLayout();
-	}
-
-	private void initHardwareLayout() {
-		final HardwareSurface surface = mHardwareSurface;
-		surface.hardwareElementWithId("shift").setBounds(12.25, 175.25, 12.0, 9.0);
-		surface.hardwareElementWithId("up").setBounds(178.25, 21.75, 14.0, 10.0);
-		surface.hardwareElementWithId("down").setBounds(178.25, 37.0, 14.0, 10.0);
-		surface.hardwareElementWithId("left").setBounds(178.25, 52.0, 14.0, 10.0);
-		surface.hardwareElementWithId("right").setBounds(178.25, 67.25, 14.0, 10.0);
-		surface.hardwareElementWithId("select").setBounds(178.25, 82.5, 14.0, 10.0);
-		surface.hardwareElementWithId("zoom").setBounds(178.25, 97.75, 14.0, 10.0);
-		surface.hardwareElementWithId("click_count_in").setBounds(178.75, 129.75, 14.0, 10.0);
-		surface.hardwareElementWithId("record_save").setBounds(178.75, 145.0, 14.0, 10.0);
-		surface.hardwareElementWithId("play_loop").setBounds(178.75, 160.0, 14.0, 10.0);
-		surface.hardwareElementWithId("stop_undo").setBounds(178.75, 175.25, 14.0, 10.0);
-		surface.hardwareElementWithId("setup").setBounds(11.5, 21.5, 14.0, 10.0);
-		surface.hardwareElementWithId("set_loop").setBounds(11.5, 37.5, 14.0, 10.0);
-		surface.hardwareElementWithId("editor").setBounds(11.25, 56.5, 14.0, 10.0);
-		surface.hardwareElementWithId("nudge_quantize").setBounds(11.25, 72.5, 14.0, 10.0);
-		surface.hardwareElementWithId("show_hide").setBounds(11.0, 93.5, 14.0, 10.0);
-		surface.hardwareElementWithId("preset_pad_select").setBounds(11.0, 108.25, 14.0, 10.0);
-		surface.hardwareElementWithId("bank").setBounds(11.0, 123.25, 14.0, 10.0);
-		surface.hardwareElementWithId("full_level").setBounds(11.25, 144.75, 14.0, 10.0);
-		surface.hardwareElementWithId("note_repeat").setBounds(11.25, 160.75, 14.0, 10.0);
-		surface.hardwareElementWithId("pad1").setBounds(34.75, 154.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad2").setBounds(69.75, 154.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad3").setBounds(104.75, 154.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad4").setBounds(139.75, 154.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad5").setBounds(34.75, 121.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad6").setBounds(69.75, 121.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad7").setBounds(104.75, 121.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad8").setBounds(139.75, 121.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad9").setBounds(34.75, 88.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad10").setBounds(69.75, 88.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad11").setBounds(104.75, 88.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad12").setBounds(139.75, 88.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad13").setBounds(34.75, 55.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad14").setBounds(69.75, 55.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad15").setBounds(104.75, 55.75, 30.0, 30.0);
-		surface.hardwareElementWithId("pad16").setBounds(139.75, 55.75, 30.0, 30.0);
-		surface.hardwareElementWithId("encoder1").setBounds(38.75, 21.5, 25.0, 25.0);
-		surface.hardwareElementWithId("encoder2").setBounds(72.5, 21.5, 25.0, 25.0);
-		surface.hardwareElementWithId("encoder3").setBounds(106.25, 21.5, 25.0, 25.0);
-		surface.hardwareElementWithId("encoder4").setBounds(140.25, 21.5, 25.0, 25.0);
-	}
-
 	private void initLayers() {
 		mBaseLayer = createLayer("Base");
-		mStepsLayer = createLayer("Steps");
-		mStepsZoomLayer = createLayer("Steps Zoom");
-		mStepsSetupLoopLayer = createLayer("Steps Setup Loop");
+		mStepLayers = new StepLayers(mLayers);
 		mLauncherClipsLayer = createLayer("Launcher Clips");
 		mNoteRepeatLayer = createLayer("Note Repeat");
 		mNoteRepeatShiftLayer = createLayer("Note Repeat Shift");
 
+		mScaleLayer = new ScaleLayer(mLayers);
+		mSetupLayer = new SetupLayer(mLayers, getHost());
+
 		initBaseLayer();
-		initStepsLayer();
-		initStepsZoomLayer();
-		initStepsSetupLoopLayer();
+		mStepLayers.init();
 		initLauncherClipsLayer();
 		initNoteRepeatLayer();
 		initNoteRepeatShiftLayer();
+
+		mScaleLayer.init();
+		mSetupLayer.init();
 
 		// DebugUtilities.createDebugLayer(mLayers, mHardwareSurface).activate();
 	}
@@ -415,9 +301,13 @@ public class PresonusAtom extends ControllerExtension {
 				mLauncherClipsLayer.activate();
 		});
 		mBaseLayer.bindReleased(mSelectButton, mLauncherClipsLayer.getDeactivateAction());
+
+		mBaseLayer.bindPressed(mSetupButton, mSetupLayer.getActivateAction());
+		mBaseLayer.bindReleased(mSetupButton, mSetupLayer.getDeactivateAction());
+
 		mBaseLayer.bind(() -> getClipColor(mCursorClip.clipLauncherSlot()), mSelectButton);
 
-		mBaseLayer.bindToggle(mEditorButton, mStepsLayer);
+		mBaseLayer.bindToggle(mEditorButton, mStepLayers.mStepsLayer);
 
 		mBaseLayer.bindReleased(mNoteRepeatButton, () -> {
 			mArpeggiator.mode().set("all");
@@ -468,66 +358,6 @@ public class PresonusAtom extends ControllerExtension {
 		mBaseLayer.activate();
 	}
 
-	private void initStepsLayer() {
-		mStepsLayer.bindToggle(mUpButton, () -> scrollKeys(1), mCursorClip.canScrollKeysUp());
-		mStepsLayer.bindToggle(mDownButton, () -> scrollKeys(-1), mCursorClip.canScrollKeysDown());
-		mStepsLayer.bindToggle(mLeftButton, () -> scrollPage(-1), mCursorClip.canScrollStepsBackwards());
-		mStepsLayer.bindToggle(mRightButton, () -> scrollPage(1), mCursorClip.canScrollStepsForwards());
-
-		mStepsLayer.bindToggle(mZoomButton, mStepsZoomLayer);
-		mStepsLayer.bindToggle(mSetLoopButton, mStepsSetupLoopLayer);
-
-		for (int i = 0; i < 16; i++) {
-			final HardwareButton padButton = mPadButtons[i];
-
-			final int padIndex = i;
-
-			mStepsLayer.bindPressed(padButton, pressure -> {
-				if (mShift) {
-					mCursorClip.scrollToKey(36 + padIndex);
-					mCurrentPadForSteps = padIndex;
-					mCursorTrack.playNote(36 + padIndex, 100);
-				} else
-					mCursorClip.toggleStep(padIndex, 0, (int) Math.round(pressure * 127));
-			});
-			mStepsLayer.bind(() -> getStepsPadColor(padIndex), padButton);
-		}
-	}
-
-	private void initStepsZoomLayer() {
-		for (int i = 0; i < 16; i++) {
-			final HardwareButton padButton = mPadButtons[i];
-
-			final int padIndex = i;
-
-			mStepsZoomLayer.bindPressed(padButton, () -> {
-				mCurrentPageForSteps = padIndex;
-				mCursorClip.scrollToStep(16 * mCurrentPageForSteps);
-			});
-			mStepsZoomLayer.bind(() -> getStepsZoomPadColor(padIndex), padButton);
-		}
-	}
-
-	private void initStepsSetupLoopLayer() {
-		for (int i = 0; i < 16; i++) {
-			final HardwareButton padButton = mPadButtons[i];
-
-			final int padIndex = i;
-
-			mStepsSetupLoopLayer.bindPressed(padButton, () -> {
-				if (padIndex == 14) {
-					mCursorClip.getLoopLength().set(Math.max(getPageLengthInBeatTime(),
-							mCursorClip.getLoopLength().get() - getPageLengthInBeatTime()));
-				} else if (padIndex == 15) {
-					mCursorClip.getLoopLength().set(mCursorClip.getLoopLength().get() + getPageLengthInBeatTime());
-				} else {
-					// mCursorClip.getLoopStart().set(padIndex * getPageLengthInBeatTime());
-				}
-			});
-			mStepsZoomLayer.bind(() -> getStepsSetupLoopPadColor(padIndex), padButton);
-		}
-	}
-
 	private void initLauncherClipsLayer() {
 		for (int i = 0; i < 16; i++) {
 			final HardwareButton padButton = mPadButtons[i];
@@ -568,83 +398,6 @@ public class PresonusAtom extends ControllerExtension {
 		}
 	}
 
-	private Color getStepsZoomPadColor(final int padIndex) {
-		final int numStepPages = getNumStepPages();
-
-		final int playingPage = mCursorClip.playingStep().get() / 16;
-
-		if (padIndex < numStepPages) {
-			Color clipColor = mCursorClip.color().get();
-
-			if (padIndex != mCurrentPageForSteps)
-				clipColor = Color.mix(clipColor, BLACK, 0.5f);
-
-			if (padIndex == playingPage)
-				return Color.mix(clipColor, WHITE, 1 - getTransportPulse(1.0, 1));
-
-			return clipColor;
-		}
-
-		return BLACK;
-	}
-
-	private Color getStepsSetupLoopPadColor(final int padIndex) {
-		if (padIndex == 14 || padIndex == 15) {
-			return WHITE;
-		}
-
-		final int numStepPages = getNumStepPages();
-
-		final int playingPage = mCursorClip.playingStep().get() / 16;
-
-		if (padIndex < numStepPages) {
-			final Color clipColor = mCursorClip.color().get();
-
-			if (padIndex == playingPage)
-				return Color.mix(clipColor, WHITE, 1 - getTransportPulse(1.0, 1));
-
-			return clipColor;
-		}
-
-		return BLACK;
-	}
-
-	private Color getStepsPadColor(final int padIndex) {
-		if (mShift) {
-			if (mCurrentPadForSteps == padIndex) {
-				return WHITE;
-			}
-
-			final int playingNote = velocityForPlayingNote(padIndex);
-
-			if (playingNote > 0) {
-				return mixColorWithWhite(clipColor(0.3f), playingNote);
-			}
-
-			return clipColor(0.3f);
-		}
-
-		if (mPlayingStep == padIndex + mCurrentPageForSteps * 16) {
-			return WHITE;
-		}
-
-		final boolean isNewNote = mStepData[padIndex] == 2;
-		final boolean hasData = mStepData[padIndex] > 0;
-
-		if (isNewNote)
-			return Color.mix(mCursorClip.color().get(), WHITE, 0.5f);
-		else if (hasData)
-			return mCursorClip.color().get();
-		else
-			return Color.mix(mCursorClip.color().get(), BLACK, 0.8f);
-	}
-
-	private Color clipColor(final float scale) {
-		final Color c = mCursorClip.color().get();
-
-		return Color.fromRGB(c.getRed() * scale, c.getGreen() * scale, c.getBlue() * scale);
-	}
-
 	private Color getDrumPadColor(final int padIndex) {
 		final DrumPad drumPad = mDrumPadBank.getItemAt(padIndex);
 		final boolean padBankExists = mDrumPadBank.exists().get();
@@ -653,19 +406,12 @@ public class PresonusAtom extends ControllerExtension {
 		if (!isOn)
 			return null;
 
-		final double darken = 0.7;
-
 		Color drumPadColor;
 
 		if (!padBankExists) {
 			drumPadColor = mCursorTrack.color().get();
 		} else {
-			final Color sourceDrumPadColor = drumPad.color().get();
-			final double red = sourceDrumPadColor.getRed() * darken;
-			final double green = sourceDrumPadColor.getGreen() * darken;
-			final double blue = sourceDrumPadColor.getBlue() * darken;
-
-			drumPadColor = Color.fromRGB(red, green, blue);
+			drumPadColor = ColorUtils.darken(drumPad.color().get());
 		}
 
 		final int playing = velocityForPlayingNote(padIndex);
@@ -713,74 +459,6 @@ public class PresonusAtom extends ControllerExtension {
 		return Color.fromRGB(red, green, blue);
 	}
 
-	private HardwareButton createToggleButton(final String id, final int controlNumber, final Color onLightColor) {
-		final HardwareButton button = createButton(id, controlNumber);
-		final OnOffHardwareLight light = mHardwareSurface.createOnOffHardwareLight(id + "_light");
-
-		final Color offColor = Color.mix(onLightColor, Color.blackColor(), 0.5);
-
-		light.setStateToVisualStateFuncation(
-				isOn -> isOn ? HardwareLightVisualState.createForColor(onLightColor, Color.blackColor())
-						: HardwareLightVisualState.createForColor(offColor, Color.blackColor()));
-
-		button.setBackgroundLight(light);
-
-		light.isOn().onUpdateHardware(value -> {
-			mMidiOut.sendMidi(0xB0, controlNumber, value ? 127 : 0);
-		});
-
-		return button;
-	}
-
-	private HardwareButton createRGBButton(final String id, final int controlNumber) {
-		final HardwareButton button = createButton(id, controlNumber);
-
-		final MultiStateHardwareLight light = mHardwareSurface.createMultiStateHardwareLight(id + "_light");
-		light.setLabelColor(BLACK);
-
-		light.state().onUpdateHardware(new LightStateSender(0xB0, controlNumber));
-
-		light.setColorToStateFunction(color -> new RGBLightState(color));
-
-		button.setBackgroundLight(light);
-
-		return button;
-	}
-
-	private HardwareButton createButton(final String id, final int controlNumber) {
-		final HardwareButton button = mHardwareSurface.createHardwareButton(id);
-		final MidiExpressions midiExpressions = getHost().midiExpressions();
-
-		button.pressedAction().setActionMatcher(
-				mMidiIn.createActionMatcher(midiExpressions.createIsCCExpression(0, controlNumber) + " && data2 > 0"));
-		button.releasedAction().setActionMatcher(mMidiIn.createCCActionMatcher(0, controlNumber, 0));
-		button.setLabelColor(BLACK);
-
-		return button;
-	}
-
-	private void createPadButton(final int index) {
-		final HardwareButton pad = mHardwareSurface.createHardwareButton("pad" + (index + 1));
-		pad.setLabel("Pad " + (index + 1));
-		pad.setLabelColor(BLACK);
-
-		final int note = 0x24 + index;
-		pad.pressedAction().setPressureActionMatcher(mMidiIn.createNoteOnVelocityValueMatcher(0, note));
-		pad.releasedAction().setActionMatcher(mMidiIn.createNoteOffActionMatcher(0, note));
-
-		mPadButtons[index] = pad;
-
-		final MultiStateHardwareLight light = mHardwareSurface.createMultiStateHardwareLight("pad_light" + (index + 1));
-
-		light.state().onUpdateHardware(new LightStateSender(0x90, 0x24 + index));
-
-		light.setColorToStateFunction(color -> new RGBLightState(color));
-
-		pad.setBackgroundLight(light);
-
-		mPadLights[index] = light;
-	}
-
 	private class LightStateSender implements Consumer<RGBLightState> {
 		protected LightStateSender(final int statusStart, final int data1) {
 			super();
@@ -808,20 +486,6 @@ public class PresonusAtom extends ControllerExtension {
 		private final int[] mLastSent = { -1, -1, -1, -1 };
 
 		private final int[] mValues = new int[4];
-	}
-
-	private void createEncoder(final int index) {
-		assert index >= 0 && index < 4;
-
-		final RelativeHardwareKnob encoder = mHardwareSurface.createRelativeHardwareKnob("encoder" + (index + 1));
-		encoder.setLabel(String.valueOf(index + 1));
-		encoder.setAdjustValueMatcher(mMidiIn.createRelativeSignedBitCCValueMatcher(0, CC_ENCODER_1 + index, 40));
-
-//		final AbsoluteHardwareKnob encoder = mHardwareSurface.createAbsoluteHardwareKnob("encoder" + (index + 1));
-//		encoder.setLabel(String.valueOf(index + 1));
-//		encoder.setAdjustValueMatcher(mMidiIn.createAbsoluteCCValueMatcher(0, CC_ENCODER_1 + index));
-
-		mEncoders[index] = encoder;
 	}
 
 	private void scrollKeys(final int delta) {
@@ -909,7 +573,7 @@ public class PresonusAtom extends ControllerExtension {
 
 	private int mCurrentPageForSteps;
 
-	private HardwareSurface mHardwareSurface;
+	private Hardware hardware;
 
 	private HardwareButton mShiftButton, mUpButton, mDownButton, mLeftButton, mRightButton, mSelectButton, mZoomButton,
 			mClickCountInButton, mRecordSaveButton, mPlayLoopButton, mStopUndoButton, mSetupButton, mSetLoopButton,
@@ -921,25 +585,487 @@ public class PresonusAtom extends ControllerExtension {
 	private MultiStateHardwareLight[] mPadLights = new MultiStateHardwareLight[16];
 
 	private RelativeHardwareKnob[] mEncoders = new RelativeHardwareKnob[4];
-//	private AbsoluteHardwareKnob[] mEncoders = new AbsoluteHardwareKnob[4];
 
 	private final Layers mLayers = new Layers(this) {
 		@Override
 		protected void activeLayersChanged() {
 			super.activeLayersChanged();
 
-			final boolean shouldPlayDrums = !mStepsLayer.isActive() && !mNoteRepeatShiftLayer.isActive()
-					&& !mLauncherClipsLayer.isActive() && !mStepsZoomLayer.isActive()
-					&& !mStepsSetupLoopLayer.isActive();
+			final boolean shouldPlayNotes = !mNoteRepeatShiftLayer.isActive() && !mLauncherClipsLayer.isActive()
+					&& !mStepLayers.anyActive() && !mSetupLayer.isActive();
 
-			mNoteInput.setKeyTranslationTable(shouldPlayDrums ? NoteInputUtils.ALL_NOTES : NoteInputUtils.NO_NOTES);
+			Integer[] keyTranslationTable = shouldPlayNotes
+					? (mScaleLayer.isActive() ? AtomNoteInputUtils.SCALE_NOTES : NoteInputUtils.ALL_NOTES)
+					: NoteInputUtils.NO_NOTES;
+			mNoteInput.setKeyTranslationTable(keyTranslationTable);
 		}
 	};
 
-	private Layer mBaseLayer, mStepsLayer, mLauncherClipsLayer, mNoteRepeatLayer, mNoteRepeatShiftLayer,
-			mStepsZoomLayer, mStepsSetupLoopLayer;
+	private Layer mBaseLayer, mLauncherClipsLayer, mNoteRepeatLayer, mNoteRepeatShiftLayer;
+	private StepLayers mStepLayers;
+	private ScaleLayer mScaleLayer;
+	private SetupLayer mSetupLayer;
 
 	private Arpeggiator mArpeggiator;
 
 	private SceneBank mSceneBank;
+
+	private class Hardware {
+		private HardwareSurface surface;
+
+		public Hardware(ControllerHost host) {
+			surface = host.createHardwareSurface();
+		}
+
+		public void flush() {
+			surface.updateHardware();
+		}
+
+		public void createHardwareSurface() {
+			surface.setPhysicalSize(202, 195);
+
+			mShiftButton = createToggleButton("shift", CC_SHIFT, ORANGE);
+			mShiftButton.setLabel("Shift");
+
+			// NAV section
+			mUpButton = createToggleButton("up", CC_UP, ORANGE);
+			mUpButton.setLabel("Up");
+			mDownButton = createToggleButton("down", CC_DOWN, ORANGE);
+			mDownButton.setLabel("Down");
+			mLeftButton = createToggleButton("left", CC_LEFT, ORANGE);
+			mLeftButton.setLabel("Left");
+			mRightButton = createToggleButton("right", CC_RIGHT, ORANGE);
+			mRightButton.setLabel("Right");
+			mSelectButton = createRGBButton("select", CC_SELECT);
+			mSelectButton.setLabel("Select");
+			mZoomButton = createToggleButton("zoom", CC_ZOOM, ORANGE);
+			mZoomButton.setLabel("Zoom");
+
+			// TRANS section
+			mClickCountInButton = createToggleButton("click_count_in", CC_CLICK_COUNT_IN, ORANGE);
+			mClickCountInButton.setLabel("Click\nCount in");
+			mRecordSaveButton = createToggleButton("record_save", CC_RECORD_SAVE, RED);
+			mRecordSaveButton.setLabel("Record\nSave");
+			mPlayLoopButton = createToggleButton("play_loop", CC_PLAY_LOOP_TOGGLE, GREEN);
+			mPlayLoopButton.setLabel("Play\nLoop");
+			mStopUndoButton = createToggleButton("stop_undo", CC_STOP_UNDO, BLUE);
+			mStopUndoButton.setLabel("Stop\nUndo");
+
+			// SONG section
+			mSetupButton = createRGBButton("setup", CC_SETUP);
+			mSetupButton.setLabel("Setup");
+			mSetLoopButton = createToggleButton("set_loop", CC_SET_LOOP, ORANGE);
+			mSetLoopButton.setLabel("Set Loop");
+
+			// EVENT section
+			mEditorButton = createToggleButton("editor", CC_EDITOR, ORANGE);
+			mEditorButton.setLabel("Editor");
+			mNudgeQuantizeButton = createToggleButton("nudge_quantize", CC_NUDGE_QUANTIZE, ORANGE);
+			mNudgeQuantizeButton.setLabel("Nudge\nQuantize");
+
+			// INST section
+			mShowHideButton = createToggleButton("show_hide", CC_SHOW_HIDE, ORANGE);
+			mShowHideButton.setLabel("Show/\nHide");
+			mPresetPadSelectButton = createToggleButton("preset_pad_select", CC_PRESET_PAD_SELECT, WHITE);
+			mPresetPadSelectButton.setLabel("Preset +-\nFocus");
+			mBankButton = createToggleButton("bank", CC_BANK_TRANSPOSE, RED);
+			mBankButton.setLabel("Bank");
+
+			// MODE section
+			mFullLevelButton = createToggleButton("full_level", CC_FULL_LEVEL, RED);
+			mFullLevelButton.setLabel("Full Level");
+			mNoteRepeatButton = createToggleButton("note_repeat", CC_NOTE_REPEAT, RED);
+			mNoteRepeatButton.setLabel("Note\nRepeat");
+
+			// Pads
+
+			for (int i = 0; i < 16; i++) {
+				final DrumPad drumPad = mDrumPadBank.getItemAt(i);
+				drumPad.exists().markInterested();
+				drumPad.color().markInterested();
+
+				createPadButton(i);
+			}
+
+			for (int i = 0; i < 4; i++) {
+				createEncoder(i);
+			}
+
+			initHardwareLayout();
+		}
+
+		private void initHardwareLayout() {
+			surface.hardwareElementWithId("shift").setBounds(12.25, 175.25, 12.0, 9.0);
+			surface.hardwareElementWithId("up").setBounds(178.25, 21.75, 14.0, 10.0);
+			surface.hardwareElementWithId("down").setBounds(178.25, 37.0, 14.0, 10.0);
+			surface.hardwareElementWithId("left").setBounds(178.25, 52.0, 14.0, 10.0);
+			surface.hardwareElementWithId("right").setBounds(178.25, 67.25, 14.0, 10.0);
+			surface.hardwareElementWithId("select").setBounds(178.25, 82.5, 14.0, 10.0);
+			surface.hardwareElementWithId("zoom").setBounds(178.25, 97.75, 14.0, 10.0);
+			surface.hardwareElementWithId("click_count_in").setBounds(178.75, 129.75, 14.0, 10.0);
+			surface.hardwareElementWithId("record_save").setBounds(178.75, 145.0, 14.0, 10.0);
+			surface.hardwareElementWithId("play_loop").setBounds(178.75, 160.0, 14.0, 10.0);
+			surface.hardwareElementWithId("stop_undo").setBounds(178.75, 175.25, 14.0, 10.0);
+			surface.hardwareElementWithId("setup").setBounds(11.5, 21.5, 14.0, 10.0);
+			surface.hardwareElementWithId("set_loop").setBounds(11.5, 37.5, 14.0, 10.0);
+			surface.hardwareElementWithId("editor").setBounds(11.25, 56.5, 14.0, 10.0);
+			surface.hardwareElementWithId("nudge_quantize").setBounds(11.25, 72.5, 14.0, 10.0);
+			surface.hardwareElementWithId("show_hide").setBounds(11.0, 93.5, 14.0, 10.0);
+			surface.hardwareElementWithId("preset_pad_select").setBounds(11.0, 108.25, 14.0, 10.0);
+			surface.hardwareElementWithId("bank").setBounds(11.0, 123.25, 14.0, 10.0);
+			surface.hardwareElementWithId("full_level").setBounds(11.25, 144.75, 14.0, 10.0);
+			surface.hardwareElementWithId("note_repeat").setBounds(11.25, 160.75, 14.0, 10.0);
+			surface.hardwareElementWithId("pad1").setBounds(34.75, 154.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad2").setBounds(69.75, 154.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad3").setBounds(104.75, 154.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad4").setBounds(139.75, 154.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad5").setBounds(34.75, 121.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad6").setBounds(69.75, 121.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad7").setBounds(104.75, 121.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad8").setBounds(139.75, 121.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad9").setBounds(34.75, 88.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad10").setBounds(69.75, 88.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad11").setBounds(104.75, 88.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad12").setBounds(139.75, 88.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad13").setBounds(34.75, 55.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad14").setBounds(69.75, 55.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad15").setBounds(104.75, 55.75, 30.0, 30.0);
+			surface.hardwareElementWithId("pad16").setBounds(139.75, 55.75, 30.0, 30.0);
+			surface.hardwareElementWithId("encoder1").setBounds(38.75, 21.5, 25.0, 25.0);
+			surface.hardwareElementWithId("encoder2").setBounds(72.5, 21.5, 25.0, 25.0);
+			surface.hardwareElementWithId("encoder3").setBounds(106.25, 21.5, 25.0, 25.0);
+			surface.hardwareElementWithId("encoder4").setBounds(140.25, 21.5, 25.0, 25.0);
+		}
+
+		private HardwareButton createToggleButton(final String id, final int controlNumber, final Color onLightColor) {
+			final HardwareButton button = createButton(id, controlNumber);
+			final OnOffHardwareLight light = surface.createOnOffHardwareLight(id + "_light");
+
+			final Color offColor = Color.mix(onLightColor, Color.blackColor(), 0.5);
+
+			light.setStateToVisualStateFuncation(
+					isOn -> isOn ? HardwareLightVisualState.createForColor(onLightColor, Color.blackColor())
+							: HardwareLightVisualState.createForColor(offColor, Color.blackColor()));
+
+			button.setBackgroundLight(light);
+
+			light.isOn().onUpdateHardware(value -> {
+				mMidiOut.sendMidi(0xB0, controlNumber, value ? 127 : 0);
+			});
+
+			return button;
+		}
+
+		private HardwareButton createRGBButton(final String id, final int controlNumber) {
+			final HardwareButton button = createButton(id, controlNumber);
+
+			final MultiStateHardwareLight light = surface.createMultiStateHardwareLight(id + "_light");
+			light.setLabelColor(BLACK);
+
+			light.state().onUpdateHardware(new LightStateSender(0xB0, controlNumber));
+
+			light.setColorToStateFunction(color -> new RGBLightState(color));
+
+			button.setBackgroundLight(light);
+
+			return button;
+		}
+
+		private HardwareButton createButton(final String id, final int controlNumber) {
+			final HardwareButton button = surface.createHardwareButton(id);
+			final MidiExpressions midiExpressions = getHost().midiExpressions();
+
+			button.pressedAction().setActionMatcher(mMidiIn
+					.createActionMatcher(midiExpressions.createIsCCExpression(0, controlNumber) + " && data2 > 0"));
+			button.releasedAction().setActionMatcher(mMidiIn.createCCActionMatcher(0, controlNumber, 0));
+			button.setLabelColor(BLACK);
+
+			return button;
+		}
+
+		private void createPadButton(final int index) {
+			final HardwareButton pad = surface.createHardwareButton("pad" + (index + 1));
+			pad.setLabel("Pad " + (index + 1));
+			pad.setLabelColor(BLACK);
+
+			final int note = 0x24 + index;
+			pad.pressedAction().setPressureActionMatcher(mMidiIn.createNoteOnVelocityValueMatcher(0, note));
+			pad.releasedAction().setActionMatcher(mMidiIn.createNoteOffActionMatcher(0, note));
+
+			mPadButtons[index] = pad;
+
+			final MultiStateHardwareLight light = surface.createMultiStateHardwareLight("pad_light" + (index + 1));
+
+			light.state().onUpdateHardware(new LightStateSender(0x90, 0x24 + index));
+
+			light.setColorToStateFunction(color -> new RGBLightState(color));
+
+			pad.setBackgroundLight(light);
+
+			mPadLights[index] = light;
+		}
+
+		private void createEncoder(final int index) {
+			assert index >= 0 && index < 4;
+
+			final RelativeHardwareKnob encoder = surface.createRelativeHardwareKnob("encoder" + (index + 1));
+			encoder.setLabel(String.valueOf(index + 1));
+			encoder.setAdjustValueMatcher(mMidiIn.createRelativeSignedBitCCValueMatcher(0, CC_ENCODER_1 + index, 40));
+
+			mEncoders[index] = encoder;
+		}
+	}
+
+	private class StepLayers {
+		public Layer mStepsLayer, mStepsZoomLayer, mStepsSetupLoopLayer;
+
+		public StepLayers(Layers mLayers) {
+			mStepsLayer = new Layer(mLayers, "Steps");
+			mStepsZoomLayer = new Layer(mLayers, "Steps Zoom");
+			mStepsSetupLoopLayer = new Layer(mLayers, "Steps Setup Loop");
+		}
+
+		public void init() {
+			initStepsLayer();
+			initStepsZoomLayer();
+			initStepsSetupLoopLayer();
+		}
+
+		private void initStepsLayer() {
+			mStepsLayer.bindToggle(mUpButton, () -> scrollKeys(1), mCursorClip.canScrollKeysUp());
+			mStepsLayer.bindToggle(mDownButton, () -> scrollKeys(-1), mCursorClip.canScrollKeysDown());
+			mStepsLayer.bindToggle(mLeftButton, () -> scrollPage(-1), mCursorClip.canScrollStepsBackwards());
+			mStepsLayer.bindToggle(mRightButton, () -> scrollPage(1), mCursorClip.canScrollStepsForwards());
+
+			mStepsLayer.bindToggle(mZoomButton, mStepsZoomLayer);
+			mStepsLayer.bindToggle(mSetLoopButton, mStepsSetupLoopLayer);
+
+			for (int i = 0; i < 16; i++) {
+				final HardwareButton padButton = mPadButtons[i];
+
+				final int padIndex = i;
+
+				mStepsLayer.bindPressed(padButton, pressure -> {
+					if (mShift) {
+						mCursorClip.scrollToKey(36 + padIndex);
+						mCurrentPadForSteps = padIndex;
+						mCursorTrack.playNote(36 + padIndex, 100);
+					} else
+						mCursorClip.toggleStep(padIndex, 0, (int) Math.round(pressure * 127));
+				});
+				mStepsLayer.bind(() -> getStepsPadColor(padIndex), padButton);
+			}
+		}
+
+		private void initStepsZoomLayer() {
+			for (int i = 0; i < 16; i++) {
+				final HardwareButton padButton = mPadButtons[i];
+
+				final int padIndex = i;
+
+				mStepsZoomLayer.bindPressed(padButton, () -> {
+					mCurrentPageForSteps = padIndex;
+					mCursorClip.scrollToStep(16 * mCurrentPageForSteps);
+				});
+				mStepsZoomLayer.bind(() -> getStepsZoomPadColor(padIndex), padButton);
+			}
+		}
+
+		private void initStepsSetupLoopLayer() {
+			for (int i = 0; i < 16; i++) {
+				final HardwareButton padButton = mPadButtons[i];
+
+				final int padIndex = i;
+
+				mStepsSetupLoopLayer.bindPressed(padButton, () -> {
+					if (padIndex == 14) {
+						mCursorClip.getLoopLength().set(Math.max(getPageLengthInBeatTime(),
+								mCursorClip.getLoopLength().get() - getPageLengthInBeatTime()));
+					} else if (padIndex == 15) {
+						mCursorClip.getLoopLength().set(mCursorClip.getLoopLength().get() + getPageLengthInBeatTime());
+					} else {
+						// mCursorClip.getLoopStart().set(padIndex * getPageLengthInBeatTime());
+					}
+				});
+				mStepsZoomLayer.bind(() -> getStepsSetupLoopPadColor(padIndex), padButton);
+			}
+		}
+
+		public boolean anyActive() {
+			return mStepsLayer.isActive() || mStepsSetupLoopLayer.isActive() || mStepsZoomLayer.isActive();
+		}
+
+		private Color getStepsZoomPadColor(final int padIndex) {
+			final int numStepPages = getNumStepPages();
+
+			final int playingPage = mCursorClip.playingStep().get() / 16;
+
+			if (padIndex < numStepPages) {
+				Color clipColor = mCursorClip.color().get();
+
+				if (padIndex != mCurrentPageForSteps)
+					clipColor = Color.mix(clipColor, BLACK, 0.5f);
+
+				if (padIndex == playingPage)
+					return Color.mix(clipColor, WHITE, 1 - getTransportPulse(1.0, 1));
+
+				return clipColor;
+			}
+
+			return BLACK;
+		}
+
+		private Color getStepsSetupLoopPadColor(final int padIndex) {
+			if (padIndex == 14 || padIndex == 15) {
+				return WHITE;
+			}
+
+			final int numStepPages = getNumStepPages();
+
+			final int playingPage = mCursorClip.playingStep().get() / 16;
+
+			if (padIndex < numStepPages) {
+				final Color clipColor = mCursorClip.color().get();
+
+				if (padIndex == playingPage)
+					return Color.mix(clipColor, WHITE, 1 - getTransportPulse(1.0, 1));
+
+				return clipColor;
+			}
+
+			return BLACK;
+		}
+
+		private Color getStepsPadColor(final int padIndex) {
+			if (mShift) {
+				if (mCurrentPadForSteps == padIndex) {
+					return WHITE;
+				}
+
+				final int playingNote = velocityForPlayingNote(padIndex);
+
+				if (playingNote > 0) {
+					return mixColorWithWhite(clipColor(0.3f), playingNote);
+				}
+
+				return clipColor(0.3f);
+			}
+
+			if (mPlayingStep == padIndex + mCurrentPageForSteps * 16) {
+				return WHITE;
+			}
+
+			final boolean isNewNote = mStepData[padIndex] == 2;
+			final boolean hasData = mStepData[padIndex] > 0;
+
+			if (isNewNote)
+				return Color.mix(mCursorClip.color().get(), WHITE, 0.5f);
+			else if (hasData)
+				return mCursorClip.color().get();
+			else
+				return Color.mix(mCursorClip.color().get(), BLACK, 0.8f);
+		}
+
+		private Color clipColor(final float scale) {
+			final Color c = mCursorClip.color().get();
+
+			return Color.fromRGB(c.getRed() * scale, c.getGreen() * scale, c.getBlue() * scale);
+		}
+	}
+
+	private class SetupLayer {
+		private ControllerHost host;
+		private Layer layer;
+		private Map<Integer, PadAction> padActions = new HashMap<Integer, PadAction>();
+
+		public SetupLayer(Layers layers, ControllerHost host) {
+			this.layer = new Layer(layers, "Setup");
+			this.host = host;
+		}
+
+		public void init() {
+			padActions.put(8, new PadAction(() -> {
+				if (mScaleLayer.isActive()) {
+					mScaleLayer.deactivate();
+					host.showPopupNotification("Scale mode disabled");
+				} else {
+					mScaleLayer.activate();
+					host.showPopupNotification("Scale mode enabled");
+				}
+			}, () -> mScaleLayer.isActive() ? BLUE : ColorUtils.darken(BLUE, 0.4)));
+
+			for (int i = 0; i < 16; i++) {
+				final HardwareButton padButton = mPadButtons[i];
+
+				final int padIndex = i;
+
+				final PadAction padAction = padActions.get(padIndex);
+				if (padAction != null) {
+					layer.bindPressed(padButton, padAction.action);
+					layer.bind(padAction.color, padButton);
+				} else {
+					layer.bind(() -> BLACK, padButton);
+				}
+			}
+		}
+
+		public HardwareActionBindable getActivateAction() {
+			return layer.getActivateAction();
+		}
+
+		public HardwareActionBindable getDeactivateAction() {
+			return layer.getDeactivateAction();
+		}
+
+		public boolean isActive() {
+			return layer.isActive();
+		}
+
+		private class PadAction {
+			public Runnable action;
+			final Supplier<Color> color;
+
+			public PadAction(final Runnable action, final Supplier<Color> color) {
+				this.action = action;
+				this.color = color;
+			}
+		}
+	}
+
+	private class ScaleLayer {
+		private Layer layer;
+
+		public ScaleLayer(Layers layers) {
+			this.layer = new Layer(layers, "Scale");
+		}
+
+		public void init() {
+			layer.bindPressed(mFullLevelButton, () -> {
+			});
+
+			for (int i = 0; i < 16; i++) {
+				final HardwareButton padButton = mPadButtons[i];
+
+				final int padIndex = i;
+
+				layer.bindPressed(padButton, pressure -> {
+				});
+
+				Color color = padIndex % 9 == 0 ? BLUE : WHITE;
+				layer.bind(() -> color, padButton);
+			}
+		}
+		
+		public void activate() {
+			 layer.activate();
+		}
+
+		public void deactivate() {
+			layer.deactivate();
+		}
+
+		public boolean isActive() {
+			return layer.isActive();
+		}
+	}
 }
