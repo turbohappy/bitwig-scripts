@@ -14,4 +14,13 @@ public class ColorUtils {
 
 		return Color.fromRGB(red, green, blue);
 	}
+	
+	public static Color mixColorWithWhite(final Color color, final int velocity) {
+		final float x = velocity / 127.f;
+		final double red = color.getRed() * (1 - x) + x;
+		final double green = color.getGreen() * (1 - x) + x;
+		final double blue = color.getBlue() * (1 - x) + x;
+
+		return Color.fromRGB(red, green, blue);
+	}
 }

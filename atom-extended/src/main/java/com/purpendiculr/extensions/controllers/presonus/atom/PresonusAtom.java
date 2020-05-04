@@ -233,8 +233,8 @@ public class PresonusAtom extends ControllerExtension {
 		mNoteRepeatLayer = createLayer("Note Repeat");
 		mNoteRepeatShiftLayer = createLayer("Note Repeat Shift");
 
-		mScaleLayer = new ScaleLayer(mLayers);
-		mSetupLayer = new SetupLayer(mLayers, getHost());
+		mScaleLayer = new ScaleLayer(mLayers, getHost());
+		mBankLayer = new BankLayer(mLayers, getHost());
 
 		initBaseLayer();
 		mStepLayers.init();
@@ -243,7 +243,7 @@ public class PresonusAtom extends ControllerExtension {
 		initNoteRepeatShiftLayer();
 
 		mScaleLayer.init();
-		mSetupLayer.init();
+		mBankLayer.init();
 
 		// DebugUtilities.createDebugLayer(mLayers, mHardwareSurface).activate();
 	}
@@ -277,12 +277,6 @@ public class PresonusAtom extends ControllerExtension {
 				mTransport.isArrangerRecordEnabled().toggle();
 		}, mTransport.isArrangerRecordEnabled());
 
-		final Boolean[] xyz = { false };
-		mBaseLayer.bindToggle(mBankButton, () -> {
-			boolean val = !xyz[0];
-			xyz[0] = val;
-		}, () -> xyz[0]);
-
 		mBaseLayer.bindToggle(mUpButton, () -> {
 			mCursorTrack.selectPrevious();
 			mCursorTrack.makeVisibleInArranger();
@@ -301,11 +295,11 @@ public class PresonusAtom extends ControllerExtension {
 				mLauncherClipsLayer.activate();
 		});
 		mBaseLayer.bindReleased(mSelectButton, mLauncherClipsLayer.getDeactivateAction());
-
-		mBaseLayer.bindPressed(mSetupButton, mSetupLayer.getActivateAction());
-		mBaseLayer.bindReleased(mSetupButton, mSetupLayer.getDeactivateAction());
-
 		mBaseLayer.bind(() -> getClipColor(mCursorClip.clipLauncherSlot()), mSelectButton);
+
+		mBaseLayer.bindPressed(mBankButton, mBankLayer.getActivateAction());
+		mBaseLayer.bindReleased(mBankButton, mBankLayer.getDeactivateAction());
+		mBaseLayer.bind(mBankLayer.selectedBankColor, mBankButton);
 
 		mBaseLayer.bindToggle(mEditorButton, mStepLayers.mStepsLayer);
 
@@ -417,7 +411,7 @@ public class PresonusAtom extends ControllerExtension {
 		final int playing = velocityForPlayingNote(padIndex);
 
 		if (playing > 0) {
-			return mixColorWithWhite(drumPadColor, playing);
+			return ColorUtils.mixColorWithWhite(drumPadColor, playing);
 		}
 
 		return drumPadColor;
@@ -449,16 +443,7 @@ public class PresonusAtom extends ControllerExtension {
 	private double getPageLengthInBeatTime() {
 		return 4;
 	}
-
-	private Color mixColorWithWhite(final Color color, final int velocity) {
-		final float x = velocity / 127.f;
-		final double red = color.getRed() * (1 - x) + x;
-		final double green = color.getGreen() * (1 - x) + x;
-		final double blue = color.getBlue() * (1 - x) + x;
-
-		return Color.fromRGB(red, green, blue);
-	}
-
+	
 	private class LightStateSender implements Consumer<RGBLightState> {
 		protected LightStateSender(final int statusStart, final int data1) {
 			super();
@@ -592,7 +577,7 @@ public class PresonusAtom extends ControllerExtension {
 			super.activeLayersChanged();
 
 			final boolean shouldPlayNotes = !mNoteRepeatShiftLayer.isActive() && !mLauncherClipsLayer.isActive()
-					&& !mStepLayers.anyActive() && !mSetupLayer.isActive();
+					&& !mStepLayers.anyActive() && !mBankLayer.isActive();
 
 			Integer[] keyTranslationTable = shouldPlayNotes
 					? (mScaleLayer.isActive() ? AtomNoteInputUtils.SCALE_NOTES : NoteInputUtils.ALL_NOTES)
@@ -604,7 +589,7 @@ public class PresonusAtom extends ControllerExtension {
 	private Layer mBaseLayer, mLauncherClipsLayer, mNoteRepeatLayer, mNoteRepeatShiftLayer;
 	private StepLayers mStepLayers;
 	private ScaleLayer mScaleLayer;
-	private SetupLayer mSetupLayer;
+	private BankLayer mBankLayer;
 
 	private Arpeggiator mArpeggiator;
 
@@ -652,7 +637,7 @@ public class PresonusAtom extends ControllerExtension {
 			mStopUndoButton.setLabel("Stop\nUndo");
 
 			// SONG section
-			mSetupButton = createRGBButton("setup", CC_SETUP);
+			mSetupButton = createToggleButton("setup", CC_SETUP, ORANGE);
 			mSetupButton.setLabel("Setup");
 			mSetLoopButton = createToggleButton("set_loop", CC_SET_LOOP, ORANGE);
 			mSetLoopButton.setLabel("Set Loop");
@@ -668,7 +653,7 @@ public class PresonusAtom extends ControllerExtension {
 			mShowHideButton.setLabel("Show/\nHide");
 			mPresetPadSelectButton = createToggleButton("preset_pad_select", CC_PRESET_PAD_SELECT, WHITE);
 			mPresetPadSelectButton.setLabel("Preset +-\nFocus");
-			mBankButton = createToggleButton("bank", CC_BANK_TRANSPOSE, RED);
+			mBankButton = createRGBButton("bank", CC_BANK_TRANSPOSE);
 			mBankButton.setLabel("Bank");
 
 			// MODE section
@@ -764,7 +749,7 @@ public class PresonusAtom extends ControllerExtension {
 
 			light.state().onUpdateHardware(new LightStateSender(0xB0, controlNumber));
 
-			light.setColorToStateFunction(color -> new RGBLightState(color));
+			light.setColorToStateFunction(color -> new RGBLightState(false, color));
 
 			button.setBackgroundLight(light);
 
@@ -945,7 +930,7 @@ public class PresonusAtom extends ControllerExtension {
 				final int playingNote = velocityForPlayingNote(padIndex);
 
 				if (playingNote > 0) {
-					return mixColorWithWhite(clipColor(0.3f), playingNote);
+					return ColorUtils.mixColorWithWhite(clipColor(0.3f), playingNote);
 				}
 
 				return clipColor(0.3f);
@@ -973,26 +958,37 @@ public class PresonusAtom extends ControllerExtension {
 		}
 	}
 
-	private class SetupLayer {
-		private ControllerHost host;
-		private Layer layer;
+	private class BankLayer extends LayerSpecInterface {
 		private Map<Integer, PadAction> padActions = new HashMap<Integer, PadAction>();
 
-		public SetupLayer(Layers layers, ControllerHost host) {
-			this.layer = new Layer(layers, "Setup");
-			this.host = host;
+		public BankLayer(Layers layers, ControllerHost host) {
+			super(layers, host, "Bank");
 		}
+		
+		private final Color BLUE = Color.fromRGB(0.25, .4, 1);
+		private final Color GREEN = Color.fromRGB(.1, 1, .1);
+		private final Color YELLOW = Color.fromRGB(1, 1, 0);
+		private final Color PURPLE = Color.fromRGB(1, .2, .9);
+		private final Color ORANGE = Color.fromRGB(1, .4, 0);
+		private final Color CYAN = Color.fromRGB(.2, .9, .9);
+		private final Color PINK = Color.fromRGB(1, .2, .3);
+		private final Color LT_ORANGE = Color.fromRGB(1, .5, .1);
+		
+		private Color selectedBankColorColor = BLUE;
+		public Supplier<Color> selectedBankColor = () -> selectedBankColorColor;
 
 		public void init() {
+			padActions.put(0, new PadAction(null, BLUE));
+			padActions.put(1, new PadAction(null, GREEN));
+			padActions.put(2, new PadAction(null, YELLOW));
+			padActions.put(3, new PadAction(null, PURPLE));
+			padActions.put(4, new PadAction(null, ORANGE));
+			padActions.put(5, new PadAction(null, CYAN));
+			padActions.put(6, new PadAction(null, PINK));
+			padActions.put(7, new PadAction(null, LT_ORANGE));
 			padActions.put(8, new PadAction(() -> {
-				if (mScaleLayer.isActive()) {
-					mScaleLayer.deactivate();
-					host.showPopupNotification("Scale mode disabled");
-				} else {
-					mScaleLayer.activate();
-					host.showPopupNotification("Scale mode enabled");
-				}
-			}, () -> mScaleLayer.isActive() ? BLUE : ColorUtils.darken(BLUE, 0.4)));
+				mScaleLayer.activate();
+			}, WHITE));
 
 			for (int i = 0; i < 16; i++) {
 				final HardwareButton padButton = mPadButtons[i];
@@ -1000,45 +996,42 @@ public class PresonusAtom extends ControllerExtension {
 				final int padIndex = i;
 
 				final PadAction padAction = padActions.get(padIndex);
+
 				if (padAction != null) {
-					layer.bindPressed(padButton, padAction.action);
-					layer.bind(padAction.color, padButton);
+					layer.bindPressed(padButton, () -> {
+						deactivateAllBankLayers();
+						selectedBankColorColor = padAction.color;
+						if (padAction.action != null) {
+							padAction.action.run();
+						}
+					});
+					layer.bind(() -> padAction.color, padButton);
 				} else {
 					layer.bind(() -> BLACK, padButton);
 				}
 			}
 		}
-
-		public HardwareActionBindable getActivateAction() {
-			return layer.getActivateAction();
-		}
-
-		public HardwareActionBindable getDeactivateAction() {
-			return layer.getDeactivateAction();
-		}
-
-		public boolean isActive() {
-			return layer.isActive();
+		
+		private void deactivateAllBankLayers() {
+			mScaleLayer.deactivate();
 		}
 
 		private class PadAction {
 			public Runnable action;
-			final Supplier<Color> color;
+			final Color color;
 
-			public PadAction(final Runnable action, final Supplier<Color> color) {
+			public PadAction(final Runnable action, final Color color) {
 				this.action = action;
 				this.color = color;
 			}
 		}
 	}
 
-	private class ScaleLayer {
-		private Layer layer;
-
-		public ScaleLayer(Layers layers) {
-			this.layer = new Layer(layers, "Scale");
+	private class ScaleLayer extends LayerSpecInterface {
+		public ScaleLayer(Layers layers, ControllerHost host) {
+			super(layers, host, "Scale");
 		}
-
+		
 		public void init() {
 			layer.bindPressed(mFullLevelButton, () -> {
 			});
@@ -1048,12 +1041,29 @@ public class PresonusAtom extends ControllerExtension {
 
 				final int padIndex = i;
 
-				layer.bindPressed(padButton, pressure -> {
-				});
-
 				Color color = padIndex % 9 == 0 ? BLUE : WHITE;
 				layer.bind(() -> color, padButton);
 			}
+		}
+	}
+	
+	private abstract class LayerSpecInterface {
+		protected ControllerHost host;
+		protected Layer layer;
+
+		public LayerSpecInterface(Layers layers, ControllerHost host, String name) {
+			this.layer = new Layer(layers, name);
+			this.host = host;
+		}
+
+		public abstract void init();
+		
+		public HardwareActionBindable getActivateAction() {
+			return layer.getActivateAction();
+		}
+
+		public HardwareActionBindable getDeactivateAction() {
+			return layer.getDeactivateAction();
 		}
 		
 		public void activate() {

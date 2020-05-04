@@ -1,5 +1,6 @@
 package com.purpendiculr.extensions.controllers.presonus.atom;
 
+import com.bitwig.extension.controller.api.ControllerHost;
 import com.bitwig.extensions.util.NoteInputUtils;
 
 public class AtomNoteInputUtils extends NoteInputUtils
@@ -37,4 +38,8 @@ public class AtomNoteInputUtils extends NoteInputUtils
          SCALE_NOTES[i] = -1;
       }
    }
+   
+	public static void printMidi(ControllerHost host, int a, int b, int c) {
+		host.println(Integer.toHexString(a) +" "+Integer.toHexString(b)+" "+Integer.toHexString(c));
+	}
 }

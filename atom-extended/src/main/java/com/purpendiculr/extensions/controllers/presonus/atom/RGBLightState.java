@@ -11,7 +11,7 @@ class RGBLightState extends InternalHardwareLightState
       return Math.max(0, Math.min((int)(127.0 * x), 127));
    }
 
-   public RGBLightState(final int red, final int green, final int blue)
+   public RGBLightState(final boolean isOn, final int red, final int green, final int blue)
    {
       super();
 
@@ -19,15 +19,21 @@ class RGBLightState extends InternalHardwareLightState
       assert green >= 0 && green <= 127;
       assert blue >= 0 && blue <= 127;
 
-      mIsOn = true;
+      mIsOn = isOn;
       mRed = red;
       mGreen = green;
       mBlue = blue;
    }
 
+   public RGBLightState(final boolean isOn, final Color color)
+   {
+      this(isOn, colorPartFromDouble(color.getRed()), colorPartFromDouble(color.getGreen()),
+         colorPartFromDouble(color.getBlue()));
+   }
+
    public RGBLightState(final Color color)
    {
-      this(colorPartFromDouble(color.getRed()), colorPartFromDouble(color.getGreen()),
+      this(true, colorPartFromDouble(color.getRed()), colorPartFromDouble(color.getGreen()),
          colorPartFromDouble(color.getBlue()));
    }
 
