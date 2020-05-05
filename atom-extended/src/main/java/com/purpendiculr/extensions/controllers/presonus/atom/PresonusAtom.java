@@ -9,6 +9,8 @@ import com.bitwig.extension.api.Color;
 import com.bitwig.extension.api.util.midi.ShortMidiMessage;
 import com.bitwig.extension.callback.ShortMidiMessageReceivedCallback;
 import com.bitwig.extension.controller.ControllerExtension;
+import com.bitwig.extension.controller.api.AbsoluteHardwareControl;
+import com.bitwig.extension.controller.api.AbsoluteHardwareKnob;
 import com.bitwig.extension.controller.api.Action;
 import com.bitwig.extension.controller.api.Application;
 import com.bitwig.extension.controller.api.Arpeggiator;
@@ -223,17 +225,18 @@ public class PresonusAtom extends ControllerExtension {
 
 	/** Called when we receive short MIDI message on port 0. */
 	private void onMidi0(final ShortMidiMessage msg) {
-		// getHost().println(msg.toString());
+//		getHost().println(msg.toString());
 	}
 
 	private void initLayers() {
 		mBaseLayer = createLayer("Base");
+		mScaleLayer = new ScaleLayer(mLayers, getHost());
+
 		mStepLayers = new StepLayers(mLayers);
 		mLauncherClipsLayer = createLayer("Launcher Clips");
 		mNoteRepeatLayer = createLayer("Note Repeat");
 		mNoteRepeatShiftLayer = createLayer("Note Repeat Shift");
 
-		mScaleLayer = new ScaleLayer(mLayers, getHost());
 		mBankLayer = new BankLayer(mLayers, getHost());
 
 		initBaseLayer();
@@ -403,9 +406,11 @@ public class PresonusAtom extends ControllerExtension {
 		Color drumPadColor;
 
 		if (!padBankExists) {
-			drumPadColor = mCursorTrack.color().get();
+//			drumPadColor = mCursorTrack.color().get();
+			drumPadColor = mBankLayer.selectedBankColor.get();
 		} else {
-			drumPadColor = ColorUtils.darken(drumPad.color().get());
+			// ColorUtils.darken(drumPad.color().get());
+			drumPadColor = mBankLayer.selectedBankColor.get();
 		}
 
 		final int playing = velocityForPlayingNote(padIndex);
@@ -443,7 +448,7 @@ public class PresonusAtom extends ControllerExtension {
 	private double getPageLengthInBeatTime() {
 		return 4;
 	}
-	
+
 	private class LightStateSender implements Consumer<RGBLightState> {
 		protected LightStateSender(final int statusStart, final int data1) {
 			super();
@@ -579,9 +584,7 @@ public class PresonusAtom extends ControllerExtension {
 			final boolean shouldPlayNotes = !mNoteRepeatShiftLayer.isActive() && !mLauncherClipsLayer.isActive()
 					&& !mStepLayers.anyActive() && !mBankLayer.isActive();
 
-			Integer[] keyTranslationTable = shouldPlayNotes
-					? (mScaleLayer.isActive() ? AtomNoteInputUtils.SCALE_NOTES : NoteInputUtils.ALL_NOTES)
-					: NoteInputUtils.NO_NOTES;
+			Integer[] keyTranslationTable = shouldPlayNotes ? mBankLayer.noteTranslation : NoteInputUtils.NO_NOTES;
 			mNoteInput.setKeyTranslationTable(keyTranslationTable);
 		}
 	};
@@ -776,6 +779,9 @@ public class PresonusAtom extends ControllerExtension {
 			final int note = 0x24 + index;
 			pad.pressedAction().setPressureActionMatcher(mMidiIn.createNoteOnVelocityValueMatcher(0, note));
 			pad.releasedAction().setActionMatcher(mMidiIn.createNoteOffActionMatcher(0, note));
+			final AbsoluteHardwareKnob mAfterTouch = surface.createAbsoluteHardwareKnob("pad" + (index + 1) + "-at");
+			mAfterTouch.setAdjustValueMatcher(mMidiIn.createPolyAftertouchValueMatcher(0, note));
+			pad.setAftertouchControl(mAfterTouch);
 
 			mPadButtons[index] = pad;
 
@@ -964,7 +970,7 @@ public class PresonusAtom extends ControllerExtension {
 		public BankLayer(Layers layers, ControllerHost host) {
 			super(layers, host, "Bank");
 		}
-		
+
 		private final Color BLUE = Color.fromRGB(0.25, .4, 1);
 		private final Color GREEN = Color.fromRGB(.1, 1, .1);
 		private final Color YELLOW = Color.fromRGB(1, 1, 0);
@@ -973,21 +979,31 @@ public class PresonusAtom extends ControllerExtension {
 		private final Color CYAN = Color.fromRGB(.2, .9, .9);
 		private final Color PINK = Color.fromRGB(1, .2, .3);
 		private final Color LT_ORANGE = Color.fromRGB(1, .5, .1);
-		
+
 		private Color selectedBankColorColor = BLUE;
 		public Supplier<Color> selectedBankColor = () -> selectedBankColorColor;
+		public Integer[] noteTranslation = AtomNoteInputUtils.padsWithOffset(0);
 
 		public void init() {
-			padActions.put(0, new PadAction(null, BLUE));
-			padActions.put(1, new PadAction(null, GREEN));
-			padActions.put(2, new PadAction(null, YELLOW));
-			padActions.put(3, new PadAction(null, PURPLE));
-			padActions.put(4, new PadAction(null, ORANGE));
-			padActions.put(5, new PadAction(null, CYAN));
-			padActions.put(6, new PadAction(null, PINK));
-			padActions.put(7, new PadAction(null, LT_ORANGE));
+			padActions.put(0, new PadAction(() -> {
+				mDrumPadBank.scrollPosition().set(36);
+				noteTranslation = AtomNoteInputUtils.padsWithOffset(0);
+			}, BLUE));
+			padActions.put(1, new PadAction(() -> {
+				mDrumPadBank.scrollPosition().set(36 + 16);
+				noteTranslation = AtomNoteInputUtils.padsWithOffset(16);
+			}, GREEN));
+			padActions.put(2, new PadAction(() -> {
+				mDrumPadBank.scrollPosition().set(36 + 32);
+				noteTranslation = AtomNoteInputUtils.padsWithOffset(32);
+			}, YELLOW));
+			padActions.put(3, new PadAction(() -> {
+				mDrumPadBank.scrollPosition().set(36 + 48);
+				noteTranslation = AtomNoteInputUtils.padsWithOffset(48);
+			}, PURPLE));
 			padActions.put(8, new PadAction(() -> {
 				mScaleLayer.activate();
+				noteTranslation = AtomNoteInputUtils.SCALE_NOTES;
 			}, WHITE));
 
 			for (int i = 0; i < 16; i++) {
@@ -1011,7 +1027,7 @@ public class PresonusAtom extends ControllerExtension {
 				}
 			}
 		}
-		
+
 		private void deactivateAllBankLayers() {
 			mScaleLayer.deactivate();
 		}
@@ -1031,7 +1047,7 @@ public class PresonusAtom extends ControllerExtension {
 		public ScaleLayer(Layers layers, ControllerHost host) {
 			super(layers, host, "Scale");
 		}
-		
+
 		public void init() {
 			layer.bindPressed(mFullLevelButton, () -> {
 			});
@@ -1046,7 +1062,7 @@ public class PresonusAtom extends ControllerExtension {
 			}
 		}
 	}
-	
+
 	private abstract class LayerSpecInterface {
 		protected ControllerHost host;
 		protected Layer layer;
@@ -1057,7 +1073,7 @@ public class PresonusAtom extends ControllerExtension {
 		}
 
 		public abstract void init();
-		
+
 		public HardwareActionBindable getActivateAction() {
 			return layer.getActivateAction();
 		}
@@ -1065,9 +1081,9 @@ public class PresonusAtom extends ControllerExtension {
 		public HardwareActionBindable getDeactivateAction() {
 			return layer.getDeactivateAction();
 		}
-		
+
 		public void activate() {
-			 layer.activate();
+			layer.activate();
 		}
 
 		public void deactivate() {
